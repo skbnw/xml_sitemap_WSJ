@@ -1,0 +1,46 @@
+name: Fetch DJ RSS Feeds
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 毎日午前1時に実行
+  workflow_dispatch:
+
+jobs:
+  fetch-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        ref: main  # mainブランチを使用
+
+    - name: Fetch and Save RSS XML Files
+      run: |
+        mkdir -p rss_dj_$(date +\%Y\%m)
+        urls=(
+          "https://feeds.a.dj.com/rss/RSSOpinion.xml"
+          "https://feeds.a.dj.com/rss/RSSWorldNews.xml"
+          "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml"
+          "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
+          "https://feeds.a.dj.com/rss/RSSWSJD.xml"
+          "https://feeds.a.dj.com/rss/RSSLifestyle.xml"
+        )
+        for url in "${urls[@]}"
+        do
+          suffix=$(basename $url .xml)  # '.xml' 拡張子を取り除く
+          if wget $url -O "rss_dj_$(date +\%Y\%m)/rss_dj_$(date +\%Y\%m%d)_$suffix.xml"; then
+            echo "Downloaded $url"
+          else
+            echo "Failed to download $url"
+            wget $url -O "rss_dj_$(date +\%Y\%m)/rss_dj_$(date +\%Y\%m%d)_$suffix.xml"  # エラー時にもう一度試行
+          fi
+        done
+
+    - name: Commit and Push files to main
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add rss_dj_$(date +\%Y\%m)/*
+        git commit -m "Add RSS XML files for $(date +\%Y\%m%d)"
+        git push origin main
