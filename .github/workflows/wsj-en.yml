@@ -1,0 +1,82 @@
+name: import os
+import requests
+import subprocess
+from datetime import datetime
+
+# フォルダを作成
+folder_name = f"rss_dj_EN_{datetime.now().strftime('%Y%m')}"
+os.makedirs(folder_name, exist_ok=True)
+
+# RSSフィードのURLリスト
+urls = [
+    "https://feeds.a.dj.com/rss/RSSOpinion.xml",
+    "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+    "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml",
+    "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "https://feeds.a.dj.com/rss/RSSWSJD.xml",
+    "https://feeds.a.dj.com/rss/RSSLifestyle.xml"
+]
+
+# RSSフィードをダウンロードして保存
+for url in urls:
+    response = requests.get(url)
+    if response.status_code == 200:
+        file_name = f"{folder_name}/rss_dj_{datetime.now().strftime('%Y%m%d_%H%M')}_{os.path.basename(url).replace('.xml', '')}.xml"
+        with open(file_name, 'wb') as file:
+            file.write(response.content)
+        print(f"Downloaded {url}")
+    else:
+        print(f"Failed to download {url}")
+
+# ファイルをコミットとプッシュ
+subprocess.run(["git", "config", "--local", "user.email", "action@github.com"])
+subprocess.run(["git", "config", "--local", "user.name", "GitHub Action"])
+subprocess.run(["git", "add", f"{folder_name}/*"])
+subprocess.run(["git", "commit", "-m", f"Add RSS XML files for {datetime.now().strftime('%Y%m%d')}"])
+subprocess.run(["git", "push", "origin", "main"])
+
+
+on:
+  schedule:
+    - cron: "0 3 */2 * *" # 毎日03時に実行
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - name: Create directory
+        run: |
+          current_month=$(date +'%Y%m')
+          current_week=$(date +'%Y_%W') # 1-51
+          day_offset=$(( 7 - current_day_of_week ))
+          current_time=$(date +'%Y%m%d_%H%M')
+          folder_name="dj_rss_EN_${current_week}"
+          mkdir -p $folder_name
+      
+      - name: Install required libraries
+        run: pip install notebook requests bs4 dropbox pandas
+      - name: Run scraper
+        run: python wsj_en.py
+
+      - name: Set Git Config
+        run: |
+          git config user.name "Automated"
+          git config user.email "actions@users.noreply.github.com"
+        working-directory: ${{ github.workspace }}
+
+      # リモートリポジトリの変更を取り込む
+      - name: Pull remote changes
+        run: git pull origin main
+        working-directory: ${{ github.workspace }}
+      
+      # XMLファイルを指定のフォルダに格納
+      - name: Move XML files to folder
+        run: |
+          mv *.xml $folder_name/
+        working-directory: ${{ github.workspace }}
+
