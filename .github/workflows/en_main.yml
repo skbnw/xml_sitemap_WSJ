@@ -1,42 +1,46 @@
-name: Fetch DJ RSS Feeds
+name: en-list
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # Every day at 01:00 AM
+    - cron: "0 3 */2 * *" # 毎日03時に実行
   workflow_dispatch:
 
 jobs:
-  fetch-and-push:
+  scrape:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        ref: main
-        token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}  # Use the secret token here
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - name: Create directory
+        run: |
+          current_month=$(date +'%Y%m')
+          current_week=$(date +'%Y_%W') # 1-51
+          day_offset=$(( 7 - current_day_of_week ))
+          current_time=$(date +'%Y%m%d_%H%M')
+          folder_name="dj_rss_EN_${current_week}"
+          mkdir -p $folder_name
+      
+      - name: Install required libraries
+        run: pip install notebook requests bs4 dropbox pandas
+      - name: Run scraper
+        run: python wsj_en.py
 
-    - name: Fetch and Save RSS XML Files
-      run: |
-        mkdir -p rss_dj_$(date +\%Y\%m)
-        urls=(
-          "https://feeds.a.dj.com/rss/RSSOpinion.xml"
-          "https://feeds.a.dj.com/rss/RSSWorldNews.xml"
-          "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml"
-          "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
-          "https://feeds.a.dj.com/rss/RSSWSJD.xml"
-          "https://feeds.a.dj.com/rss/RSSLifestyle.xml"
-        )
-        for url in "${urls[@]}"
-        do
-          suffix=$(basename $url .xml)
-          wget $url -O "rss_dj_$(date +\%Y\%m)/rss_dj_$(date +\%Y\%m%d)_$suffix.xml" && echo "Downloaded $url"
-        done
+      - name: Set Git Config
+        run: |
+          git config user.name "Automated"
+          git config user.email "actions@users.noreply.github.com"
+        working-directory: ${{ github.workspace }}
 
-    - name: Commit and Push files to main
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add rss_dj_$(date +\%Y\%m)/*
-        git commit -m "Add RSS XML files for $(date +\%Y\%m%d)"
-        git push
+      # リモートリポジトリの変更を取り込む
+      - name: Pull remote changes
+        run: git pull origin main
+        working-directory: ${{ github.workspace }}
+      
+      # XMLファイルを指定のフォルダに格納
+      - name: Move XML files to folder
+        run: |
+          mv *.xml $folder_name/
+        working-directory: ${{ github.workspace }}
+
